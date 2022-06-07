@@ -16,7 +16,7 @@ while True:
       "options": [
         {
           "name": "START",
-          "func": lambda: pySweeper.newGame(width=24,height=12,difficulty=1) # min width is 15
+          "func": lambda: pySweeper.newGame(width=32,height=16,difficulty=1) # min width is 15
         },
         {
           "name": "OPTIONS",

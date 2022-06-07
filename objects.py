@@ -32,8 +32,11 @@ class Game:
     Cursor.hide()
 
     startTime = time.time()
+    endTime = startTime # (if this bugs out, your total game time will default to 0 seconds)
     gameIsActive = True
-    playerX = width//2; playerY = height//2
+    
+    playerX = width//2
+    playerY = height//2
   
     ########### GRID GENERATOR ###########
     def genGrid():
@@ -65,6 +68,7 @@ class Game:
     
         print(f"\033[93mDEBUG: mine generator results\033[39m\nmineCount: {grid['mineCount']}\ntrueMineCount: {trueMineCount}")
         getkey()
+        Clear.screen()
     ########### MINE GENERATOR ###########
     genMines(grid["mineCount"])
 
@@ -110,11 +114,11 @@ class Game:
         print(f"\033[93mFLAGS:\033[0m {grid['flagCount']}/{grid['mineCount']}".ljust((grid["width"]//2)-3),end="")
       
       def drawUI_time():
-        print(f"\033[2;4H\033[93mTIME:\033[0m \033[38;2;175;50;50m0000\033[0m",end="")
+        print(f"\033[2;4H\033[93mTIME:\033[39m \033[2m0000\033[0m",end="")
 
       def drawUI_dynamicTime():
         while gameIsActive == True:
-          print(f"\033[2;4H\033[93mTIME:\033[0m \033[38;2;255;50;50m{str(round(time.time()-startTime))[0:4].rjust(4,'0')}\033[0m",end="")
+          print(f"\033[2;4H\033[93mTIME:\033[39m {str(round(time.time()-startTime))[0:4].rjust(4,'0')}\033[0m",end="")
           sys.stdout.flush()
           if time.time()-startTime > 9999:
             endGame(2)
@@ -127,11 +131,11 @@ class Game:
         print(f"{grid['flagCount']}/{grid['mineCount']}".center((grid["width"]//2)-3),end="")
       
       def drawUI_time():
-        print("\033[2;4H\033[38;2;175;50;50m"+"0000".center((grid["width"]//2)-3)+"\033[0m",end="")
+        print("\033[2;4H\033[2m"+"0000".center((grid["width"]//2)-3)+"\033[0m",end="")
 
       def drawUI_dynamicTime():
         while gameIsActive == True:
-          print("\033[2;4H\033[38;2;255;50;50m"+str(round(time.time()-startTime))[0:4].rjust(4,'0').center((grid['width']//2)-3)+"\033[0m",end="")
+          print("\033[2;4H"+str(round(time.time()-startTime))[0:4].rjust(4,'0').center((grid['width']//2)-3)+"\033[0m",end="")
           sys.stdout.flush()
           if time.time()-startTime > 9999:
             endGame(2)
@@ -199,8 +203,44 @@ class Game:
         openAdjacent(tile[0],tile[1])
         activeTiles.remove(tile)
     ############ AREA CLEARER ############
-
         
+
+    ########### RADIUS CLEARER ###########
+    def radiusClearer(x,y,r=1):
+      for xoffset in range(-r,r+1):
+        for yoffset in range(-r,r+1):
+          try:
+            if grid["tiles"][(x+xoffset,y+yoffset)]["state"] == 0:
+              grid["tiles"][(x+xoffset,y+yoffset)]["state"] = 1
+              drawCell((x+xoffset,y+yoffset))
+          except KeyError:
+            pass # tile out of range
+    ########### RADIUS CLEARER ###########
+
+
+    ########## CHAIN DETONATOR ###########
+    def chainDetonator(x,y,r=3):
+      if r>0: r-=1 # as more mines explode, the radius decreases
+        
+      def explode(x,y):
+        grid["tiles"][x,y]["mine"] = False
+        radiusClearer(x,y,r)
+        playAnimation(x,y,fx_explosion)
+        chainDetonator(x,y,r)
+      
+      if grid["tiles"][(x,y)]["mine"] == True:
+        explode(x,y)
+      
+      for xoffset in range(-r,r+1):
+        for yoffset in range(-r,r+1):
+          try:
+            if grid["tiles"][(x+xoffset,y+yoffset)]["mine"] == True:
+              explode(x+xoffset,y+yoffset)
+          except KeyError:
+            pass # tile out of range
+    ########## CHAIN DETONATOR ###########
+
+            
     ############ ON FIRST CLICK ############
     def onFirstClick():
       if grid["tiles"][(playerX,playerY)]["mine"] == True:
@@ -226,42 +266,37 @@ class Game:
       
     ############ ANIM RENDERER ############
     def playAnimation(x,y,spritesheet):
+      x+=2; y+=3 # shifts coords with UI padding
       for frame in spritesheet:
         Cursor.moveTo(y,x-1)
-        print(frame,end="")
-        sys.stdout.flush()
+        print(frame)
         time.sleep(0.1)
     ############ ANIM RENDERER ############
+      
+          
 
-        
     ############ GAMESTATES ############
     def endGame(state=0):
-      noKeyPressed = True
+      keyHasBeenPressed = False
       def pressAnyKey():
         time.sleep(2)
-        if noKeyPressed == True:
+        if keyHasBeenPressed == False:
           print("\033[4;1H\033[2mpress any key to continue\033[0m")
 
-      if state == 0: # player loses
-        Clear.screen()
-        print(f"\033[31mYou died!\033[39m\nYour time: {round(time.time()-startTime,2)} seconds\033[39m")
-        threading.Thread(target=pressAnyKey,daemon=True).start()
-        getkey()
-        noKeyPressed = False
+      Clear.screen()
       
-      if state == 1: # player wins
-        Clear.screen()
-        print(f"\033[92mYou win!\033[39m\nYour time: {round(time.time()-startTime,2)} seconds\033[39m")
-        threading.Thread(target=pressAnyKey,daemon=True).start()
-        getkey()
-        noKeyPressed = False
+      if state == 0: # player loses
+        print(f"\033[31mYou tripped a mine!\033[39m\nYour time: \033[92m{round(endTime-startTime,2)}\033[39m seconds\033[39m")
+      
+      elif state == 1: # player wins
+        print(f"\033[92mYou marked all of the mines!\033[39m\nYour time: \033[92m{round(endTime-startTime,2)}\033[39m seconds\033[39m")
 
-      if state == 2: #player runs out of time
-        Clear.screen()
+      elif state == 2: #player runs out of time
         print(f"\033[93mTime's up!\033[39m\n\033[2m(you lost)\033[0m")
-        threading.Thread(target=pressAnyKey,daemon=True).start()
-        getkey()
-        noKeyPressed = False
+      
+      threading.Thread(target=pressAnyKey,daemon=True).start()
+      getkey()
+      keyHasBeenPressed = True
     ############ GAMESTATES ############
 
     
@@ -315,7 +350,8 @@ class Game:
           
           if grid["tiles"][(playerX,playerY)]["mine"] == True:
             gameIsActive = False
-            playAnimation(playerX+2,playerY+3,fx_explosion)
+            endTime = time.time()
+            chainDetonator(playerX,playerY)
             endGame(0)
             return
             # if there is a mine, you die
@@ -431,7 +467,92 @@ class Dialog:
     self.settings = gameSettings.settings
 
   
-  def new(self, data, submenu=False):
+  def startup(self):
+    Clear.screen()
+
+    self.highlight = f"\033[48;2;{self.settings['highlight'][0]};{self.settings['highlight'][1]};{self.settings['highlight'][2]}m"
+    self.highlightFaded = f"\033[48;2;{self.settings['highlightFaded'][0]};{self.settings['highlightFaded'][1]};{self.settings['highlightFaded'][2]}m"
+    self.borderColor = f"\033[38;2;{self.settings['borderColor'][0]};{self.settings['borderColor'][1]};{self.settings['borderColor'][2]}m"
+    self.currentItem = 0
+    self.data = {}
+
+    ####################### BORDER #######################
+    if (self.settings["screenWidth"] % 2) == 0:
+      self.border = self.borderColor+self.settings["edgeChar"]+"||".center(self.settings["screenWidth"]-2,self.settings["lineChar"])+self.settings["edgeChar"]+"\033[39m"
+    else:
+      self.border = self.borderColor+self.settings["edgeChar"]+"|".center(self.settings["screenWidth"]-2,self.settings["lineChar"])+self.settings["edgeChar"]+"\033[39m"
+    # creates border and stores it in memory
+    ####################### BORDER #######################
+
+      
+    ####################### HEADER #######################
+    def drawHeader():
+      try: print(self.borderColor+self.settings["edgeChar"]+(" "+self.data["header"]+" ").center(self.settings["screenWidth"]-2,self.settings["lineChar"])+self.settings["edgeChar"]+"\033[39m\n",end="")
+      except KeyError: print(self.border)
+    # if there is a "header" tag, this centers its contents in the top border
+    self.drawHeader = drawHeader
+    ####################### HEADER #######################
+
+        
+    ####################### FOOTER #######################
+    def drawFooter():
+      try: print(self.borderColor+self.settings["edgeChar"]+(" "+self.data["footer"]+" ").center(self.settings["screenWidth"]-2,self.settings["lineChar"])+self.settings["edgeChar"]+"\033[39m\n",end="")
+      except KeyError: print(self.border)
+    # if there is a "footer" tag, this centers its contents in the bottom border
+    self.drawFooter
+    ####################### FOOTER #######################
+
+        
+    ####################### MESSAGE #######################
+    def drawMessage():
+      try:
+        self.data["message"]
+        # checks if message tag exists
+        
+        def formatMessage(message):
+          if len(message) > self.settings["screenWidth"]-4:
+            word_list = message.split()
+            # breaks down the message string into a list
+            # (ex. ["This","is","a","message"])
+    
+            string = ""
+            while len(word_list) > 0:
+              # runs as until the full message has been fully printed
+              string += word_list.pop(0)+" "
+              
+              while len(string) < self.settings["screenWidth"]-4:
+                try:
+                  if len(string)+len(word_list[0])+1 > self.settings["screenWidth"]-4:
+                    break
+                    # quits the function if continuing would overflow
+                  else:
+                    string += word_list.pop(0)+" "
+                except IndexError: break
+                # assembles each line until it's too long to fit
+    
+              print(self.borderColor+self.settings["edgeChar"]+"\033[39m",string[:-1].center(self.settings["screenWidth"]-4),self.borderColor+self.settings["edgeChar"]+"\033[39m\n",end="")
+              string = ""
+          
+          else:
+            print(self.borderColor+self.settings["edgeChar"]+"\033[39m",message.center(self.settings["screenWidth"]-4),self.borderColor+self.settings["edgeChar"]+"\033[39m\n",end="")
+    
+        ##################################
+        if type(self.data["message"]) == list:
+          for message in self.data["message"]:
+            formatMessage(message)
+        
+        elif type(self.data["message"]) == str:
+          formatMessage(self.data["message"])
+        ##################################
+      
+      except KeyError: pass
+      # if there is a "message" tag, this will print its contents
+      # controls word wrap across multiple lines
+    ####################### MESSAGE #######################
+
+
+  
+  def new(self, data):
     Clear.screen()
 
     highlight = f"\033[48;2;{self.settings['highlight'][0]};{self.settings['highlight'][1]};{self.settings['highlight'][2]}m"
@@ -634,12 +755,13 @@ class Dialog:
       if currentItem < 0: currentItem = len(data["options"])-1
       
       Clear.screen()
-      ########### ON DIALOG EXIT ###########
-      if exitDialog == True:
-        if submenu != True:
-          Cursor.show()
-        break
-      ########### ON DIALOG EXIT ###########
+
+
+
+
+  
+  def slider(self, data):
+    pass
 
       
 
@@ -692,3 +814,43 @@ class Clear:
   def line(f=False):
     sys.stdout.write("\033[2K")
     if f == True: sys.stdout.flush()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class OptionsMenu:
+  def __init__(self, gameSettings):
+    self.settings = gameSettings.settings
+
+  def render(self):
+    Clear.screen()
+
+    highlight = f"\033[48;2;{self.settings['highlight'][0]};{self.settings['highlight'][1]};{self.settings['highlight'][2]}m"
+    highlightFaded = f"\033[48;2;{self.settings['highlightFaded'][0]};{self.settings['highlightFaded'][1]};{self.settings['highlightFaded'][2]}m"
+    borderColor = f"\033[38;2;{self.settings['borderColor'][0]};{self.settings['borderColor'][1]};{self.settings['borderColor'][2]}m"
+    currentItem = 0
+
+    ####################### BORDER #######################
+    if (self.settings["screenWidth"] % 2) == 0:
+      border = borderColor+self.settings["edgeChar"]+"||".center(self.settings["screenWidth"]-2,self.settings["lineChar"])+self.settings["edgeChar"]+"\033[39m"
+    else:
+      border = borderColor+self.settings["edgeChar"]+"|".center(self.settings["screenWidth"]-2,self.settings["lineChar"])+self.settings["edgeChar"]+"\033[39m"
+    # creates border and stores it in memory
+    ####################### BORDER #######################
