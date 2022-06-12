@@ -1,1 +1,2 @@
-todo: add help file
+KNOWN BUGS AND LIMITATIONS:
+- ansii escape sequences cannot be used in dialog header/footer text
